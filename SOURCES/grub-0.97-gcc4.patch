@@ -1,0 +1,743 @@
+--- grub-0.97/lib/device.c.gcc4	2005-12-14 10:36:33.000000000 -0500
++++ grub-0.97/lib/device.c	2005-12-14 10:36:34.000000000 -0500
+@@ -648,27 +648,24 @@
+ }
+ 
+ /* Read mapping information from FP, and write it to MAP.  */
++static void rdm_show_error (const char *map_file, int no, const char *msg)
++{
++  fprintf (stderr, "%s:%d: error: %s\n", map_file, no, msg);
++}
++
++static void rdm_show_warning (const char *map_file,int no, const char *msg, ...)
++{
++  va_list ap;
++  
++  va_start (ap, msg);
++  fprintf (stderr, "%s:%d: warning: ", map_file, no);
++  vfprintf (stderr, msg, ap);
++  va_end (ap);
++}
++
+ static int
+ read_device_map (FILE *fp, char **map, const char *map_file)
+ {
+-  auto void show_error (int no, const char *msg);
+-  auto void show_warning (int no, const char *msg, ...);
+-  
+-  auto void show_error (int no, const char *msg)
+-    {
+-      fprintf (stderr, "%s:%d: error: %s\n", map_file, no, msg);
+-    }
+-  
+-  auto void show_warning (int no, const char *msg, ...)
+-    {
+-      va_list ap;
+-      
+-      va_start (ap, msg);
+-      fprintf (stderr, "%s:%d: warning: ", map_file, no);
+-      vfprintf (stderr, msg, ap);
+-      va_end (ap);
+-    }
+-  
+   /* If there is the device map file, use the data in it instead of
+      probing devices.  */
+   char buf[1024];		/* XXX */
+@@ -698,14 +695,14 @@
+       
+       if (*ptr != '(')
+ 	{
+-	  show_error (line_number, "No open parenthesis found");
++	  rdm_show_error (map_file, line_number, "No open parenthesis found");
+ 	  return 0;
+ 	}
+       
+       ptr++;
+       if ((*ptr != 'f' && *ptr != 'h') || *(ptr + 1) != 'd')
+ 	{
+-	  show_error (line_number, "Bad drive name");
++	  rdm_show_error (map_file, line_number, "Bad drive name");
+ 	  return 0;
+ 	}
+       
+@@ -716,12 +713,12 @@
+       drive = strtoul (ptr, &ptr, 10);
+       if (drive < 0)
+ 	{
+-	  show_error (line_number, "Bad device number");
++	  rdm_show_error (map_file, line_number, "Bad device number");
+ 	  return 0;
+ 	}
+       else if (drive > 127)
+ 	{
+-	  show_warning (line_number,
++	  rdm_show_warning (map_file, line_number,
+ 			"Ignoring %cd%d due to a BIOS limitation",
+ 			is_floppy ? 'f' : 'h', drive);
+ 	  continue;
+@@ -732,7 +729,7 @@
+       
+       if (*ptr != ')')
+ 	{
+-	  show_error (line_number, "No close parenthesis found");
++	  rdm_show_error (map_file, line_number, "No close parenthesis found");
+ 	  return 0;
+ 	}
+       
+@@ -743,7 +740,7 @@
+       
+       if (! *ptr)
+ 	{
+-	  show_error (line_number, "No filename found");
++	  rdm_show_error (map_file, line_number, "No filename found");
+ 	  return 0;
+ 	}
+       
+@@ -756,7 +753,7 @@
+       /* Multiple entries for a given drive is not allowed.  */
+       if (map[drive])
+ 	{
+-	  show_error (line_number, "Duplicated entry found");
++	  rdm_show_error (map_file, line_number, "Duplicated entry found");
+ 	  return 0;
+ 	}
+       
+--- grub-0.97/stage2/char_io.c.gcc4	2005-12-14 10:36:33.000000000 -0500
++++ grub-0.97/stage2/char_io.c	2005-12-14 10:36:34.000000000 -0500
+@@ -176,7 +176,7 @@
+ }
+ 
+ void
+-grub_printf (const char *format,...)
++grub_printf (char *format,...)
+ {
+   int *dataptr = (int *) &format;
+   char c, str[16];
+@@ -1202,36 +1202,35 @@
+ }
+ #endif /* ! STAGE1_5 */
+ 
+-int
+-memcheck (int addr, int len)
+-{
+ #ifdef GRUB_UTIL
+-  auto int start_addr (void);
+-  auto int end_addr (void);
+-  
+-  auto int start_addr (void)
+-    {
+-      int ret;
++static int memcheck_start_addr (void)
++{
++  int ret;
+ # if defined(HAVE_START_SYMBOL)
+-      asm volatile ("movl	$start, %0" : "=a" (ret));
++  asm volatile ("movl	$start, %0" : "=a" (ret));
+ # elif defined(HAVE_USCORE_START_SYMBOL)
+-      asm volatile ("movl	$_start, %0" : "=a" (ret));
++  asm volatile ("movl	$_start, %0" : "=a" (ret));
+ # endif
+-      return ret;
+-    }
++  return ret;
++}
+ 
+-  auto int end_addr (void)
+-    {
+-      int ret;
++static int memcheck_end_addr (void)
++{
++  int ret;
+ # if defined(HAVE_END_SYMBOL)
+-      asm volatile ("movl	$end, %0" : "=a" (ret));
++  asm volatile ("movl	$end, %0" : "=a" (ret));
+ # elif defined(HAVE_USCORE_END_SYMBOL)
+-      asm volatile ("movl	$_end, %0" : "=a" (ret));
++  asm volatile ("movl	$_end, %0" : "=a" (ret));
+ # endif
+-      return ret;
+-    }
++  return ret;
++}
++#endif /* GRUB_UTIL */
+ 
+-  if (start_addr () <= addr && end_addr () > addr + len)
++int
++memcheck (int addr, int len)
++{
++#ifdef GRUB_UTIL
++  if (memcheck_start_addr () <= addr && memcheck_end_addr () > addr + len)
+     return ! errnum;
+ #endif /* GRUB_UTIL */
+ 
+--- grub-0.97/stage2/fsys_reiserfs.c.gcc4	2004-02-18 17:09:10.000000000 -0500
++++ grub-0.97/stage2/fsys_reiserfs.c	2005-12-14 10:36:34.000000000 -0500
+@@ -367,7 +367,7 @@
+ 
+ 
+ static __inline__ unsigned long
+-log2 (unsigned long word)
++grub_log2 (unsigned long word)
+ {
+   __asm__ ("bsfl %1,%0"
+ 	   : "=r" (word)
+@@ -609,7 +609,7 @@
+   
+   INFO->version = super.s_version;
+   INFO->blocksize = super.s_blocksize;
+-  INFO->fullblocksize_shift = log2 (super.s_blocksize);
++  INFO->fullblocksize_shift = grub_log2 (super.s_blocksize);
+   INFO->blocksize_shift = INFO->fullblocksize_shift - SECTOR_BITS;
+   INFO->cached_slots = 
+     (FSYSREISER_CACHE_SIZE >> INFO->fullblocksize_shift) - 1;
+--- grub-0.97/stage2/smp-imps.h.gcc4	2005-02-02 15:36:06.000000000 -0500
++++ grub-0.97/stage2/smp-imps.h	2005-12-14 10:36:34.000000000 -0500
+@@ -196,7 +196,6 @@
+ 
+ int imps_probe (void);
+ 
+-
+ /*
+  *  Defines that use variables
+  */
+--- grub-0.97/stage2/fsys_fat.c.gcc4	2005-03-15 11:52:00.000000000 -0500
++++ grub-0.97/stage2/fsys_fat.c	2005-12-14 10:36:34.000000000 -0500
+@@ -55,7 +55,7 @@
+ #define FAT_CACHE_SIZE 2048
+ 
+ static __inline__ unsigned long
+-log2 (unsigned long word)
++grub_log2 (unsigned long word)
+ {
+   __asm__ ("bsfl %1,%0"
+ 	   : "=r" (word)
+@@ -84,9 +84,9 @@
+   if (bpb.sects_per_clust == 0)
+     return 0;
+   
+-  FAT_SUPER->sectsize_bits = log2 (FAT_CVT_U16 (bpb.bytes_per_sect));
++  FAT_SUPER->sectsize_bits = grub_log2 (FAT_CVT_U16 (bpb.bytes_per_sect));
+   FAT_SUPER->clustsize_bits
+-    = FAT_SUPER->sectsize_bits + log2 (bpb.sects_per_clust);
++    = FAT_SUPER->sectsize_bits + grub_log2 (bpb.sects_per_clust);
+   
+   /* Fill in info about super block */
+   FAT_SUPER->num_sectors = FAT_CVT_U16 (bpb.short_sectors) 
+--- grub-0.97/stage2/builtins.c.gcc4	2005-12-14 10:36:33.000000000 -0500
++++ grub-0.97/stage2/builtins.c	2005-12-14 10:36:34.000000000 -0500
+@@ -616,89 +616,88 @@
+ /* Set new colors used for the menu interface. Support two methods to
+    specify a color name: a direct integer representation and a symbolic
+    color name. An example of the latter is "blink-light-gray/blue".  */
+-static int
+-color_func (char *arg, int flags)
++static const char * const color_list[16] =
+ {
+-  char *normal;
+-  char *highlight;
+-  int new_normal_color;
+-  int new_highlight_color;
+-  static char *color_list[16] =
+-  {
+-    "black",
+-    "blue",
+-    "green",
+-    "cyan",
+-    "red",
+-    "magenta",
+-    "brown",
+-    "light-gray",
+-    "dark-gray",
+-    "light-blue",
+-    "light-green",
+-    "light-cyan",
+-    "light-red",
+-    "light-magenta",
+-    "yellow",
+-    "white"
+-  };
++  "black",
++  "blue",
++  "green",
++  "cyan",
++  "red",
++  "magenta",
++  "brown",
++  "light-gray",
++  "dark-gray",
++  "light-blue",
++  "light-green",
++  "light-cyan",
++  "light-red",
++  "light-magenta",
++  "yellow",
++  "white"
++};
+ 
+-  auto int color_number (char *str);
++/* Convert the color name STR into the magical number.  */
++static int color_number (char *str)
++{
++  char *ptr;
++  int i;
++  int color = 0;
+   
+-  /* Convert the color name STR into the magical number.  */
+-  auto int color_number (char *str)
++  /* Find the separator.  */
++  for (ptr = str; *ptr && *ptr != '/'; ptr++)
++    ;
++
++  /* If not found, return -1.  */
++  if (! *ptr)
++    return -1;
++
++  /* Terminate the string STR.  */
++  *ptr++ = 0;
++
++  /* If STR contains the prefix "blink-", then set the `blink' bit
++     in COLOR.  */
++  if (substring ("blink-", str) <= 0)
+     {
+-      char *ptr;
+-      int i;
+-      int color = 0;
+-      
+-      /* Find the separator.  */
+-      for (ptr = str; *ptr && *ptr != '/'; ptr++)
+-	;
++      color = 0x80;
++      str += 6;
++    }
++  
++  /* Search for the color name.  */
++  for (i = 0; i < 16; i++)
++    if (grub_strcmp (color_list[i], str) == 0)
++      {
++        color |= i;
++        break;
++      }
+ 
+-      /* If not found, return -1.  */
+-      if (! *ptr)
+-	return -1;
+-
+-      /* Terminate the string STR.  */
+-      *ptr++ = 0;
+-
+-      /* If STR contains the prefix "blink-", then set the `blink' bit
+-	 in COLOR.  */
+-      if (substring ("blink-", str) <= 0)
+-	{
+-	  color = 0x80;
+-	  str += 6;
+-	}
+-      
+-      /* Search for the color name.  */
+-      for (i = 0; i < 16; i++)
+-	if (grub_strcmp (color_list[i], str) == 0)
+-	  {
+-	    color |= i;
+-	    break;
+-	  }
++  if (i == 16)
++    return -1;
+ 
+-      if (i == 16)
+-	return -1;
++  str = ptr;
++  nul_terminate (str);
+ 
+-      str = ptr;
+-      nul_terminate (str);
++  /* Search for the color name.  */      
++  for (i = 0; i < 8; i++)
++    if (grub_strcmp (color_list[i], str) == 0)
++      {
++        color |= i << 4;
++        break;
++      }
+ 
+-      /* Search for the color name.  */      
+-      for (i = 0; i < 8; i++)
+-	if (grub_strcmp (color_list[i], str) == 0)
+-	  {
+-	    color |= i << 4;
+-	    break;
+-	  }
++  if (i == 8)
++    return -1;
+ 
+-      if (i == 8)
+-	return -1;
++  return color;
++}
++
++static int
++color_func (char *arg, int flags)
++{
++  char *normal;
++  char *highlight;
++  int new_normal_color;
++  int new_highlight_color;
+ 
+-      return color;
+-    }
+-      
+   normal = arg;
+   highlight = skip_to (0, arg);
+ 
+@@ -742,7 +741,6 @@
+   " But only the first eight names can be used for BG. You can prefix"
+   " \"blink-\" to FG if you want a blinking foreground color."
+ };
+-
+ 
+ /* configfile */
+ static int
+@@ -3851,50 +3849,47 @@
+   {"delete",		0,		0x7f,	0,	0x53}
+ };
+ 
+-static int
+-setkey_func (char *arg, int flags)
++static int find_key_code (char *key)
+ {
+-  char *to_key, *from_key;
+-  int to_code, from_code;
+-  int map_in_interrupt = 0;
+-  
+-  auto int find_key_code (char *key);
+-  auto int find_ascii_code (char *key);
+-  
+-  auto int find_key_code (char *key)
+-    {
+-      int i;
++  int i;
+ 
+-      for (i = 0; i < sizeof (keysym_table) / sizeof (keysym_table[0]); i++)
+-	{
+-	  if (keysym_table[i].unshifted_name &&
+-	      grub_strcmp (key, keysym_table[i].unshifted_name) == 0)
+-	    return keysym_table[i].keycode;
+-	  else if (keysym_table[i].shifted_name &&
+-		   grub_strcmp (key, keysym_table[i].shifted_name) == 0)
+-	    return keysym_table[i].keycode;
+-	}
+-      
+-      return 0;
++  for (i = 0; i < sizeof (keysym_table) / sizeof (keysym_table[0]); i++)
++    {
++      if (keysym_table[i].unshifted_name &&
++          grub_strcmp (key, keysym_table[i].unshifted_name) == 0)
++        return keysym_table[i].keycode;
++      else if (keysym_table[i].shifted_name &&
++               grub_strcmp (key, keysym_table[i].shifted_name) == 0)
++        return keysym_table[i].keycode;
+     }
+   
+-  auto int find_ascii_code (char *key)
++  return 0;
++}
++  
++static int find_ascii_code (char *key)
++{
++  int i;
++  
++  for (i = 0; i < sizeof (keysym_table) / sizeof (keysym_table[0]); i++)
+     {
+-      int i;
+-      
+-      for (i = 0; i < sizeof (keysym_table) / sizeof (keysym_table[0]); i++)
+-	{
+-	  if (keysym_table[i].unshifted_name &&
+-	      grub_strcmp (key, keysym_table[i].unshifted_name) == 0)
+-	    return keysym_table[i].unshifted_ascii;
+-	  else if (keysym_table[i].shifted_name &&
+-		   grub_strcmp (key, keysym_table[i].shifted_name) == 0)
+-	    return keysym_table[i].shifted_ascii;
+-	}
+-      
+-      return 0;
++      if (keysym_table[i].unshifted_name &&
++          grub_strcmp (key, keysym_table[i].unshifted_name) == 0)
++        return keysym_table[i].unshifted_ascii;
++      else if (keysym_table[i].shifted_name &&
++               grub_strcmp (key, keysym_table[i].shifted_name) == 0)
++        return keysym_table[i].shifted_ascii;
+     }
+   
++  return 0;
++}
++
++static int
++setkey_func (char *arg, int flags)
++{
++  char *to_key, *from_key;
++  int to_code, from_code;
++  int map_in_interrupt = 0;
++  
+   to_key = arg;
+   from_key = skip_to (0, to_key);
+ 
+@@ -4012,7 +4007,6 @@
+   " is a digit), and delete. If no argument is specified, reset key"
+   " mappings."
+ };
+-
+ 
+ /* setup */
+ static int
+--- grub-0.97/stage2/fsys_iso9660.c.gcc4	2004-05-11 08:11:19.000000000 -0400
++++ grub-0.97/stage2/fsys_iso9660.c	2005-12-14 10:36:34.000000000 -0500
+@@ -57,7 +57,7 @@
+ 
+ 
+ static inline unsigned long
+-log2 (unsigned long word)
++grub_log2 (unsigned long word)
+ {
+   asm volatile ("bsfl %1,%0"
+ 		:          "=r" (word)
+@@ -68,7 +68,7 @@
+ static int
+ iso9660_devread (int sector, int byte_offset, int byte_len, char *buf)
+ {
+-  unsigned short sector_size_lg2 = log2(buf_geom.sector_size);
++  unsigned short sector_size_lg2 = grub_log2(buf_geom.sector_size);
+ 
+   /*
+    * We have to use own devread() function since BIOS return wrong geometry
+--- grub-0.97/stage2/iso9660.h.gcc4	2004-03-27 11:02:38.000000000 -0500
++++ grub-0.97/stage2/iso9660.h	2005-12-14 10:36:34.000000000 -0500
+@@ -73,11 +73,11 @@
+ 
+ typedef	struct __iso_16bit {
+   u_int16_t l, b;
+-} iso_16bit_t __attribute__ ((packed));
++} iso_16bit_t;
+ 
+ typedef	struct __iso_32bit {
+   u_int32_t l, b;
+-} iso_32bit_t __attribute__ ((packed));
++} iso_32bit_t;
+ 
+ typedef u_int8_t		iso_date_t[7];
+ 
+--- grub-0.97/stage2/fsys_xfs.c.gcc4	2005-05-07 22:15:55.000000000 -0400
++++ grub-0.97/stage2/fsys_xfs.c	2005-12-14 10:36:34.000000000 -0500
+@@ -97,8 +97,8 @@
+ 	return ino & XFS_INO_MASK(XFS_INO_OFFSET_BITS);
+ }
+ 
+-static inline __const__ xfs_uint16_t
+-le16 (xfs_uint16_t x)
++static inline xfs_uint16_t __attribute__((__const__))
++le16 (xfs_uint16_t x) 
+ {
+ 	__asm__("xchgb %b0,%h0"	\
+ 		: "=q" (x) \
+@@ -106,7 +106,7 @@
+ 		return x;
+ }
+ 
+-static inline __const__ xfs_uint32_t
++static inline xfs_uint32_t __attribute__((__const__))
+ le32 (xfs_uint32_t x)
+ {
+ #if 0
+@@ -122,7 +122,7 @@
+ 	return x;
+ }
+ 
+-static inline __const__ xfs_uint64_t
++static inline xfs_uint64_t __attribute__((__const__))
+ le64 (xfs_uint64_t x)
+ {
+ 	xfs_uint32_t h = x >> 32;
+@@ -334,7 +334,7 @@
+ {
+ 	int namelen = 1;
+ 	int toread;
+-	static char usual[2][3] = {".", ".."};
++	static char *usual[2] = {".", ".."};
+ 	static xfs_dir2_sf_entry_t *sfe;
+ 	char *name = usual[0];
+ 
+--- grub-0.97/stage2/term.h.gcc4	2005-12-14 10:36:33.000000000 -0500
++++ grub-0.97/stage2/term.h	2005-12-14 10:36:34.000000000 -0500
+@@ -142,7 +142,7 @@
+ void graphics_cls(void);
+ void graphics_setcolorstate (color_state state);
+ void graphics_setcolor (int normal_color, int highlight_color);
+-void graphics_setcursor (int on);
++int graphics_setcursor (int on);
+ int graphics_init(void);
+ void graphics_end(void);
+ 
+--- grub-0.97/stage2/graphics.c.gcc4	2005-12-14 10:36:33.000000000 -0500
++++ grub-0.97/stage2/graphics.c	2005-12-14 10:36:34.000000000 -0500
+@@ -72,7 +72,7 @@
+ 
+ /* graphics local functions */
+ static void graphics_setxy(int col, int row);
+-static void graphics_scroll();
++static void graphics_scroll(void);
+ 
+ /* FIXME: where do these really belong? */
+ static inline void outb(unsigned short port, unsigned char val)
+@@ -253,16 +253,16 @@
+     graphics_setcolorstate (graphics_color_state);
+ }
+ 
+-void graphics_setcursor (int on) {
++int graphics_setcursor (int on) {
+     /* FIXME: we don't have a cursor in graphics */
+-    return;
++    return 0;
+ }
+ 
+ /* Open the file, and search for a valid XPM header.  Return 1 if one is found,
+  * leaving the current position as the start of the next line.  Else,
+  * return 0.
+  */
+-int xpm_open(const char *s) {
++static int xpm_open(char *s) {
+     char buf, prev, target[]="/* XPM */\n";
+     int pos=0;
+ 
+@@ -454,7 +454,7 @@
+ }
+ 
+ /* scroll the screen */
+-static void graphics_scroll() {
++static void graphics_scroll(void) {
+     int i, j;
+ 
+     /* we don't want to scroll recursively... that would be bad */
+--- grub-0.97/stage2/shared.h.gcc4	2005-12-14 10:36:33.000000000 -0500
++++ grub-0.97/stage2/shared.h	2005-12-14 10:36:34.000000000 -0500
+@@ -874,7 +874,7 @@
+ #endif
+ 
+ /* C library replacement functions with identical semantics. */
+-void grub_printf (const char *format,...);
++void grub_printf (char *format,...);
+ int grub_sprintf (char *buffer, const char *format, ...);
+ int grub_tolower (int c);
+ int grub_isspace (int c);
+--- grub-0.97/stage2/fsys_vstafs.c.gcc4	2003-07-09 07:45:53.000000000 -0400
++++ grub-0.97/stage2/fsys_vstafs.c	2005-12-14 10:36:34.000000000 -0500
+@@ -186,35 +186,35 @@
+ int 
+ vstafs_read (char *addr, int len)
+ {
+-  struct alloc *a;
++  struct alloc *al;
+   int size, ret = 0, offset, curr_len = 0;
+-  int curr_ext;
++  int this_ext;
+   char extent;
+   int ext_size;
+   char *curr_pos;
+   
+   get_file_info (f_sector);
+   size = FILE_INFO->len-VSTAFS_START_DATA;
+-  a = FILE_INFO->blocks;
++  al = FILE_INFO->blocks;
+   
+   if (filepos > 0)
+     {
+-      if (filepos < a[0].a_len * 512 - VSTAFS_START_DATA)
++      if (filepos < al[0].a_len * 512 - VSTAFS_START_DATA)
+ 	{
+ 	  offset = filepos + VSTAFS_START_DATA;
+ 	  extent = 0;
+-	  curr_len = a[0].a_len * 512 - offset - filepos; 
++	  curr_len = al[0].a_len * 512 - offset - filepos; 
+ 	}
+       else
+ 	{
+-	  ext_size = a[0].a_len * 512 - VSTAFS_START_DATA;
++	  ext_size = al[0].a_len * 512 - VSTAFS_START_DATA;
+ 	  offset = filepos - ext_size;
+ 	  extent = 1;
+ 	  do
+ 	    {
+ 	      curr_len -= ext_size;
+ 	      offset -= ext_size;
+-	      ext_size = a[extent+1].a_len * 512;
++	      ext_size = al[extent+1].a_len * 512;
+ 	    }
+ 	  while (extent < FILE_INFO->extents && offset>ext_size);
+ 	}
+@@ -223,16 +223,16 @@
+     {
+       offset = VSTAFS_START_DATA;
+       extent = 0;
+-      curr_len = a[0].a_len * 512 - offset;
++      curr_len = al[0].a_len * 512 - offset;
+     }
+   
+   curr_pos = addr;
+   if (curr_len > len)
+     curr_len = len;
+   
+-  for (curr_ext=extent;
+-       curr_ext < FILE_INFO->extents; 
+-       curr_len = a[curr_ext].a_len * 512, curr_pos += curr_len, curr_ext++)
++  for (this_ext=extent;
++       this_ext < FILE_INFO->extents; 
++       curr_len = al[this_ext].a_len * 512, curr_pos += curr_len, this_ext++)
+     {
+       ret += curr_len;
+       size -= curr_len;
+@@ -242,7 +242,7 @@
+ 	  curr_len += size;
+ 	}
+       
+-      devread (a[curr_ext].a_start,offset, curr_len, curr_pos);
++      devread (al[this_ext].a_start,offset, curr_len, curr_pos);
+       offset = 0;
+     }
+   
+--- grub-0.97/stage2/disk_io.c.gcc4	2004-05-23 12:35:24.000000000 -0400
++++ grub-0.97/stage2/disk_io.c	2005-12-14 10:36:34.000000000 -0500
+@@ -128,7 +128,7 @@
+ int filemax;
+ 
+ static inline unsigned long
+-log2 (unsigned long word)
++grub_log2 (unsigned long word)
+ {
+   asm volatile ("bsfl %1,%0"
+ 		: "=r" (word)
+@@ -140,7 +140,7 @@
+ rawread (int drive, int sector, int byte_offset, int byte_len, char *buf)
+ {
+   int slen, sectors_per_vtrack;
+-  int sector_size_bits = log2 (buf_geom.sector_size);
++  int sector_size_bits = grub_log2 (buf_geom.sector_size);
+ 
+   if (byte_len <= 0)
+     return 1;
+@@ -163,7 +163,7 @@
+ 	    }
+ 	  buf_drive = drive;
+ 	  buf_track = -1;
+-	  sector_size_bits = log2 (buf_geom.sector_size);
++	  sector_size_bits = grub_log2 (buf_geom.sector_size);
+ 	}
+ 
+       /* Make sure that SECTOR is valid.  */
+--- grub-0.97/grub/asmstub.c.gcc4	2005-12-14 10:36:33.000000000 -0500
++++ grub-0.97/grub/asmstub.c	2005-12-14 10:36:44.000000000 -0500
+@@ -94,7 +94,7 @@
+ static jmp_buf env_for_exit;
+ 
+ /* The current color for console.  */
+-int console_current_color = A_NORMAL;
++int console_current_color = A_NORMAL;
+ 
+ /* The file descriptor for a serial device.  */
+ static int serial_fd = -1;

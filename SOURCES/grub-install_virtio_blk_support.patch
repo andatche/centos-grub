@@ -1,0 +1,21 @@
+diff -urpN grub-0.97/util/grub-install.in.virtio grub-0.97/util/grub-install.in
+--- grub-0.97/util/grub-install.in.virtio	2009-05-20 14:08:13.000000000 -0400
++++ grub-0.97/util/grub-install.in	2009-05-20 14:09:13.000000000 -0400
+@@ -134,7 +134,7 @@ convert () {
+ 	# more? 
+ 	tmp_disk=`echo "$1" | grep -v '/mapper/control$' |
+ 		grep -v '/mapper/[[:alnum:]_]\+-[[:digit:]]\+$' | uniq |
+-		sed -e 's%\([sh]d[a-z]\)[0-9]*$%\1%' \
++		sed -e 's%\([shv]d[a-z]\)[0-9]*$%\1%' \
+ 			  -e 's%\(/c[0-9]\+d[0-9]\+\).*$%\1%' \
+ 			  -e 's%\(fd[0-9]*\)$%\1%' \
+ 			  -e 's%/part[0-9]*$%/disc%' \
+@@ -142,7 +142,7 @@ convert () {
+   -e 's%\(/mapper/[[:alnum:]]\+\(_[[:alnum:]]\+\)\+\)\p[[:digit:]]\+$%\1%'`
+ 	tmp_part=`echo "$1" | grep -v '/mapper/control$' |
+ 		grep -v '/mapper/[[:alnum:]_]\+-[[:digit:]]\+$' | uniq |
+-		sed -e 's%.*/[sh]d[a-z]\([0-9]*\)$%\1%' \
++		sed -e 's%.*/[shv]d[a-z]\([0-9]*\)$%\1%' \
+ 			  -e 's%.*/c[0-9]\+d[0-9]\+p\([[:digit:]]\+\)%\1%' \
+ 			  -e 's%.*/c[0-9]\+d[0-9]\+$%%' \
+ 			  -e 's%.*/fd[0-9]\+$%%' \
